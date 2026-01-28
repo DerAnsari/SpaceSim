@@ -14,10 +14,4 @@ A high-performance gravitational physics simulator built with C++ and OpenGL.
 * OpenGL & GLFW
 * Dear ImGui (included as submodule)
 
-## Quick Start
-```bash
-git clone --recursive [https://github.com/yourusername/SpaceSim.git](https://github.com/yourusername/SpaceSim.git)
-mkdir build && cd build
-cmake ..
-make
-./SpaceSim
+
