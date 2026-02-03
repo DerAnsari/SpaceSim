@@ -19,11 +19,15 @@ set(IMGUI_SOURCES
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 
+# GLAD
+set(GLAD_DIR ${CMAKE_SOURCE_DIR}/external/glad)
+set(GLAD_SOURCES ${GLAD_DIR}/src/gl.c)
+
 # Your sources
 file(GLOB PROJECT_SOURCES "src/*.cpp" "main.cpp")
 
 # Build
-add_executable(SpaceSim ${PROJECT_SOURCES} ${IMGUI_SOURCES})
+add_executable(SpaceSim ${PROJECT_SOURCES} ${IMGUI_SOURCES} ${GLAD_SOURCES})
 
 target_link_libraries(SpaceSim
     OpenGL::GL
@@ -35,4 +39,5 @@ target_include_directories(SpaceSim PRIVATE
     include
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
+    ${GLAD_DIR}/include
 )
