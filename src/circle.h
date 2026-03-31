@@ -2,86 +2,59 @@
 #define SPACESIM_CIRCLE_H
 
 #include <glad/gl.h>
-#include <glm/glm.hpp>
 #include <vector>
 #include <cmath>
 
 class Circle {
+    unsigned int VAO, VBO, EBO;
+    int indexCount;
+
 public:
-  // Constructor: radius and segments (more segments = smoother circle)
-  Circle(float radius = 0.5f, int segments = 100)
-    : radius(radius), segments(segments), VAO(0), VBO(0), EBO(0), indexCount(0) {
-    generateCircle();
-  }
+    Circle(float radius = 1.0f, int segments = 32) {
+        std::vector<float> vertices;
+        std::vector<unsigned int> indices;
 
-  // Destructor: clean up GPU memory
-  ~Circle() {
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-  }
+        vertices.push_back(0.0f); vertices.push_back(0.0f); vertices.push_back(0.0f);
 
-  // Draw the circle
-  void draw() {
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-  }
+        for (int i = 0; i <= segments; i++) {
+            float angle = (2.0f * 3.14159f * i) / segments;
+            vertices.push_back(radius * cos(angle));
+            vertices.push_back(radius * sin(angle));
+            vertices.push_back(0.0f);
+        }
 
-private:
-  float radius;
-  int segments;
-  unsigned int VAO, VBO, EBO;
-  unsigned int indexCount;
+        for (int i = 1; i <= segments; i++) {
+            indices.push_back(0);
+            indices.push_back(i);
+            indices.push_back(i % segments + 1);
+        }
 
-  void generateCircle() {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
+        indexCount = indices.size();
 
-    // Center point
-    vertices.push_back(0.0f);
-    vertices.push_back(0.0f);
-    vertices.push_back(0.0f);
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
 
-    // Generate vertices around the circle
-    for (int i = 0; i <= segments; i++) {
-      float angle = (2.0f * 3.14159265359f * i) / segments;
-      float x = radius * cos(angle);
-      float y = radius * sin(angle);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-      vertices.push_back(x);
-      vertices.push_back(y);
-      vertices.push_back(0.0f);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
     }
 
-    // Generate indices (connect center to each edge point)
-    for (int i = 1; i <= segments; i++) {
-      indices.push_back(0); // center
-      indices.push_back(i); // current edge point
-      indices.push_back(i + 1); // next edge point
+    // This is the key: tell the shader where to put this specific instance
+    void draw(unsigned int shaderProgram, float x, float y, float scale) {
+        int locScale = glGetUniformLocation(shaderProgram, "scale");
+        int locOffset = glGetUniformLocation(shaderProgram, "offset");
+
+        glUniform1f(locScale, scale);
+        glUniform2f(locOffset, x, y);
+
+        glBindVertexArray(VAO);
+        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
     }
-
-    indexCount = indices.size();
-
-    // Set up OpenGL buffers
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-
-    glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-    // Position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *) 0);
-    glEnableVertexAttribArray(0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-  }
 };
-
 #endif

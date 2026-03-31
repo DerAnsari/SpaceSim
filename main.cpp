@@ -8,6 +8,7 @@
 //Own Dependencies
 #include "../src/circle.h"
 #include <iostream>
+#include <random>
 
 using std::cout, std::endl;
 
@@ -20,19 +21,23 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
 void processInput(GLFWwindow *window);
 
-const char *vertexShaderSource = "#version 330 core\n"
+// Compiling the Necessary Shaders (setups)
+auto vertexShaderSource = "#version 330 core\n"
     "layout (location = 0) in vec3 aPos;\n"
     "uniform mat4 projection;\n"
+    "uniform vec2 offset;\n"
+    "uniform float scale;\n"
     "void main()\n"
     "{\n"
-    "   gl_Position = projection * vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+    "   vec2 positioned = (aPos.xy * scale) + offset;\n"
+    "   gl_Position = projection * vec4(positioned, 0.0, 1.0);\n"
     "}\0";
 
-const char *fragmentShaderSource = "#version 330 core\n"
+auto fragmentShaderSource = "#version 330 core\n"
     "out vec4 FragColor;\n"
     "void main()\n"
     "{\n"
-    "   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
+    "   FragColor = vec4(1.0f, 1.0f, 1.0f, 0.2f);\n"
     "}\n\0";
 
 unsigned int shaderProgram = 0;
@@ -48,13 +53,19 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 }
 
 int main() {
+  //struct used to keep the attributes fed to draw circle func
+  struct Body {
+    float x, y;
+    float radius;
+  };
+
   // glfw: initialize and configure
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-//Special stuff needed to run on macOS
+  //Special stuff needed to run on macOS
 #ifdef __APPLE__
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
@@ -75,6 +86,10 @@ int main() {
     return -1;
   }
 
+  // Enable Blending
+  glEnable(GL_BLEND);
+  // Set the math for how colors mix (Standard Alpha Blending)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   // build and compile shader program
 
   //compiles vertex shaders
@@ -101,7 +116,7 @@ int main() {
     cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << endl;
   }
 
-  //link the compiled shaders into the main program
+  //link the two shaders into a shader Programm to be used by the main function
   shaderProgram = glCreateProgram();
   glAttachShader(shaderProgram, vertexShader);
   glAttachShader(shaderProgram, fragmentShader);
@@ -118,27 +133,37 @@ int main() {
   glDeleteShader(vertexShader);
   glDeleteShader(fragmentShader);
 
+  //generating random coordinates thatll be the basis for out bodies spaqning
+  std::vector<Body> bodies;
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> posDist(-0.8f, 0.8f); // Stay away from very edges
+  std::uniform_real_distribution<float> sizeDist(0.02f, 0.05f);
 
-  // Creates a circle
-  Circle circle(0.3f, 100);
+  for (int i = 0; i < 500; i++) {
+    bodies.push_back({posDist(gen), posDist(gen), sizeDist(gen)});
+  }
+  // Creates a circle, abstracted out to header file
+  Circle circle(1.0f, 100);
 
   // render loop
   while (!glfwWindowShouldClose(window)) {
     processInput(window);
 
-    //adds color
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);  //black
-    glClear(GL_COLOR_BUFFER_BIT);  //clear screen post loop
+    //adds color to the window
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f); //black
+    glClear(GL_COLOR_BUFFER_BIT); //clear screen post loop
 
-    glUseProgram(shaderProgram);  //tells gpu to use this shader program for drawing
+    glUseProgram(shaderProgram); //tells gpu to use this shader program for drawing
 
     //boiler code necessary to keep it dynamically scaling
+
 
     // Get actual framebuffer size (handles DPI scaling)
     int frameWidth, frameHeight;
     glfwGetFramebufferSize(window, &frameWidth, &frameHeight);
 
-    float aspect = static_cast<float>(frameWidth) / static_cast<float>(frameHeight) ;
+    float aspect = static_cast<float>(frameWidth) / static_cast<float>(frameHeight);
 
     // Create projection matrix that maintains aspect ratio
     glm::mat4 projection;
@@ -153,7 +178,12 @@ int main() {
     int const projLoc = glGetUniformLocation(shaderProgram, "projection");
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    circle.draw();
+
+    // draws the circle (abstracted out to the header file
+    for (const auto &b: bodies) {
+      // Draw the circle geometry at that spot
+      circle.draw(shaderProgram, b.x, b.y, b.radius);
+    }
 
     glfwSwapBuffers(window);
     glfwPollEvents();
