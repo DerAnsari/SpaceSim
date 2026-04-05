@@ -7,6 +7,8 @@
 
 //Own Dependencies
 #include "../include/circle.h"
+#include "../include/SimObject.h"
+#include "../include/universe.h"
 #include <iostream>
 #include <random>
 
@@ -52,13 +54,70 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 }
 
-int main() {
-  //struct used to keep the attributes fed to draw circle func
-  struct Body {
-    float x, y;
-    float radius;
-  };
+unsigned int setupShaders(const char *vSrc, const char *fSrc) {
+  int success;
+  char infoLog[512];
 
+  // Vertex
+  unsigned int vShader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vShader, 1, &vSrc, nullptr);
+  glCompileShader(vShader);
+  glGetShaderiv(vShader, GL_COMPILE_STATUS, &success);
+  if (!success) {
+    glGetShaderInfoLog(vShader, 512, nullptr, infoLog);
+    std::cout << "ERROR::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+  }
+
+  // Fragment
+  unsigned int fShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fShader, 1, &fSrc, nullptr);
+  glCompileShader(fShader);
+  glGetShaderiv(fShader, GL_COMPILE_STATUS, &success);
+  if (!success) {
+    glGetShaderInfoLog(fShader, 512, nullptr, infoLog);
+    std::cout << "ERROR::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
+  }
+
+  // Link
+  unsigned int program = glCreateProgram();
+  glAttachShader(program, vShader);
+  glAttachShader(program, fShader);
+  glLinkProgram(program);
+  glGetProgramiv(program, GL_LINK_STATUS, &success);
+  if (!success) {
+    glGetProgramInfoLog(program, 512, nullptr, infoLog);
+    std::cout << "ERROR::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+  }
+
+  // cleanup
+  glDeleteShader(vShader);
+  glDeleteShader(fShader);
+  return program;
+}
+
+void applyProjection(unsigned int shader, GLFWwindow *window) {
+  // 1. Get actual framebuffer size
+  int frameWidth, frameHeight;
+  glfwGetFramebufferSize(window, &frameWidth, &frameHeight);
+
+  float aspect = static_cast<float>(frameWidth) / static_cast<float>(frameHeight);
+
+  // 2. Create projection matrix
+  glm::mat4 projection;
+  if (aspect > 1.0f) {
+    projection = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1.0f, 1.0f);
+  } else {
+    projection = glm::ortho(-1.0f, 1.0f, -1.0f / aspect, 1.0f / aspect, -1.0f, 1.0f);
+  }
+
+  // 3. Send to GPU
+  // Use 'shader' (the parameter), not 'shaderProgram'
+  int projLoc = glGetUniformLocation(shader, "projection");
+  glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+}
+
+
+int main() {
   // glfw: initialize and configure
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -90,61 +149,55 @@ int main() {
   glEnable(GL_BLEND);
   // Set the math for how colors mix (Standard Alpha Blending)
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
   // build and compile shader program
+  unsigned int shaderProgram = setupShaders(vertexShaderSource, fragmentShaderSource);
 
-  //compiles vertex shaders
-  unsigned const int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
-  glCompileShader(vertexShader);
 
-  int success;
-  char infoLog[512];
-  glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-  if (!success) {
-    glGetShaderInfoLog(vertexShader, 512, nullptr, infoLog);
-    cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << endl;
-  }
+  // Creates a circle, abstracted out to header file
+  Circle circleRenderer(1.0f, 32);
+  Universe myUniverse;
 
-  //compiles fragment shaders
-  unsigned const int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
-  glCompileShader(fragmentShader);
+  //adding the sun
+  myUniverse.addBody(new Star(0.0f, 0.0f, 500.0f, 0.04f));
 
-  glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-  if (!success) {
-    glGetShaderInfoLog(fragmentShader, 512, nullptr, infoLog);
-    cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << endl;
-  }
+  //Making our tuning variables
+  float minRad{0.003f}, maxRad{0.008f};
+  int numBodies{100};
+  float G = 0.001f;
+  float sunMass = 500.0f;
 
-  //link the two shaders into a shader Programm to be used by the main function
-  shaderProgram = glCreateProgram();
-  glAttachShader(shaderProgram, vertexShader);
-  glAttachShader(shaderProgram, fragmentShader);
-  glLinkProgram(shaderProgram);
-
-  //check if shaders linked successfully or not
-  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-  if (!success) {
-    glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
-    cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << endl;
-  }
-
-  //getting rid of garbage
-  glDeleteShader(vertexShader);
-  glDeleteShader(fragmentShader);
-
-  //generating random coordinates thatll be the basis for out bodies spaqning
-  std::vector<Body> bodies;
+  //generating random coordinates thatll be the basis for our bodies spawning
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> posDist(-0.8f, 0.8f); // Stay away from very edges
-  std::uniform_real_distribution<float> sizeDist(0.002f, 0.005f);
+  std::uniform_real_distribution<float> posDist(-0.9f, 0.9f); // Stay away from very edges
+  std::uniform_real_distribution<float> sizeDist(minRad, maxRad);
 
-  for (int i = 0; i < 5000; i++) {
-    bodies.push_back({posDist(gen), posDist(gen), sizeDist(gen)});
+  for (int i = 0; i < numBodies; i++) {
+    float x = posDist(gen);
+    float y = posDist(gen);
+
+    // 1. Calculate distance from Sun (at 0,0)
+    float r = std::sqrt(x * x + y * y);
+
+    // Avoid spawning planets inside the Sun or too close (prevents slingshots)
+    if (r < 0.1f) {
+      i--;
+      continue;
+    }
+
+    Planet *p = new Planet(x, y, 1.0f, sizeDist(gen));
+
+    // 2. Calculate the required speed for a circular orbit
+    float speed = std::sqrt((G * sunMass) / r);
+
+    // 3. Create a perpendicular velocity vector
+    // For a position (x, y), the perpendicular vector is (-y, x)
+    glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
+    p->vel = unitTangent * speed;
+
+    myUniverse.addBody(p);
   }
-  // Creates a circle, abstracted out to header file
-  Circle circle(1.0f, 100);
 
   // render loop
   while (!glfwWindowShouldClose(window)) {
@@ -154,36 +207,18 @@ int main() {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f); //black
     glClear(GL_COLOR_BUFFER_BIT); //clear screen post loop
 
-    glUseProgram(shaderProgram); //tells gpu to use this shader program for drawing
+    //tells gpu to use this shader program for drawing
+    glUseProgram(shaderProgram);
 
     //boiler code necessary to keep it dynamically scaling
+    applyProjection(shaderProgram, window);
 
-
-    // Get actual framebuffer size (handles DPI scaling)
-    int frameWidth, frameHeight;
-    glfwGetFramebufferSize(window, &frameWidth, &frameHeight);
-
-    float aspect = static_cast<float>(frameWidth) / static_cast<float>(frameHeight);
-
-    // Create projection matrix that maintains aspect ratio
-    glm::mat4 projection;
-    if (aspect > 1.0f) {
-      // Window is wider - scale X
-      projection = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1.0f, 1.0f);
-    } else {
-      // Window is taller - scale Y
-      projection = glm::ortho(-1.0f, 1.0f, -1.0f / aspect, 1.0f / aspect, -1.0f, 1.0f);
-    }
-
-    int const projLoc = glGetUniformLocation(shaderProgram, "projection");
-    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
+    //live update planatary circles and their gravity
+    myUniverse.updatePhysics(0.01f);
 
     // draws the circle (abstracted out to the header file
-    for (const auto &b: bodies) {
-      // Draw the circle geometry at that spot
-      circle.draw(shaderProgram, b.x, b.y, b.radius);
-    }
+    myUniverse.renderAll(shaderProgram, circleRenderer);
+
 
     glfwSwapBuffers(window);
     glfwPollEvents();

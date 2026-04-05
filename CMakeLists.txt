@@ -22,7 +22,9 @@ set(IMGUI_SOURCES
 # GLAD
 set(GLAD_DIR ${CMAKE_SOURCE_DIR}/external/glad)
 set(GLAD_SOURCES ${GLAD_DIR}/src/gl.c
-        include/circle.h)
+        include/circle.h
+        include/SimObject.h
+        include/universe.h)
 
 # Your sources
 file(GLOB PROJECT_SOURCES "src/*.cpp" "src/main.cpp")
