@@ -6,7 +6,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 //Own Dependencies
-#include "../src/circle.h"
+#include "../include/circle.h"
 #include <iostream>
 #include <random>
 
@@ -37,7 +37,7 @@ auto fragmentShaderSource = "#version 330 core\n"
     "out vec4 FragColor;\n"
     "void main()\n"
     "{\n"
-    "   FragColor = vec4(1.0f, 1.0f, 1.0f, 0.2f);\n"
+    "   FragColor = vec4(1.0f, 1.0f, 1.0f, 0.6f);\n"
     "}\n\0";
 
 unsigned int shaderProgram = 0;
@@ -138,9 +138,9 @@ int main() {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<float> posDist(-0.8f, 0.8f); // Stay away from very edges
-  std::uniform_real_distribution<float> sizeDist(0.02f, 0.05f);
+  std::uniform_real_distribution<float> sizeDist(0.002f, 0.005f);
 
-  for (int i = 0; i < 500; i++) {
+  for (int i = 0; i < 5000; i++) {
     bodies.push_back({posDist(gen), posDist(gen), sizeDist(gen)});
   }
   // Creates a circle, abstracted out to header file

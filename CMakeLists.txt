@@ -22,10 +22,10 @@ set(IMGUI_SOURCES
 # GLAD
 set(GLAD_DIR ${CMAKE_SOURCE_DIR}/external/glad)
 set(GLAD_SOURCES ${GLAD_DIR}/src/gl.c
-        src/circle.h)
+        include/circle.h)
 
 # Your sources
-file(GLOB PROJECT_SOURCES "src/*.cpp" "main.cpp")
+file(GLOB PROJECT_SOURCES "src/*.cpp" "src/main.cpp")
 
 # Build
 add_executable(SpaceSim ${PROJECT_SOURCES} ${IMGUI_SOURCES} ${GLAD_SOURCES})
