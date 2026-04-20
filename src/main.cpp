@@ -9,7 +9,10 @@
 #include "../include/circle.h"
 #include "../include/SimObject.h"
 #include "../include/universe.h"
+#include "../include/camera.h"
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <random>
 
 using std::cout, std::endl;
@@ -18,40 +21,29 @@ using std::cout, std::endl;
 int SCR_WIDTH = 800;
 int SCR_HEIGHT = 600;
 
-//Boiler functions necessary for getting openGL up and running
-void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+Camera2D camera;
 
-void processInput(GLFWwindow *window);
+// Helper to read shader files
+std::string readShaderFile(const char* filePath) {
+    // Try original path
+    std::ifstream file(filePath);
+    if (file.is_open()) {
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
 
-// Compiling the Necessary Shaders (setups)
-auto vertexShaderSource = "#version 330 core\n"
-    "layout (location = 0) in vec3 aPos;\n"
-    "uniform mat4 projection;\n"
-    "uniform vec2 offset;\n"
-    "uniform float scale;\n"
-    "void main()\n"
-    "{\n"
-    "   vec2 positioned = (aPos.xy * scale) + offset;\n"
-    "   gl_Position = projection * vec4(positioned, 0.0, 1.0);\n"
-    "}\0";
+    // Try parent directory (common when running from a build folder)
+    std::string fallbackPath = "../" + std::string(filePath);
+    std::ifstream fallbackFile(fallbackPath);
+    if (fallbackFile.is_open()) {
+        std::stringstream buffer;
+        buffer << fallbackFile.rdbuf();
+        return buffer.str();
+    }
 
-auto fragmentShaderSource = "#version 330 core\n"
-    "out vec4 FragColor;\n"
-    "void main()\n"
-    "{\n"
-    "   FragColor = vec4(1.0f, 1.0f, 1.0f, 0.6f);\n"
-    "}\n\0";
-
-unsigned int shaderProgram = 0;
-
-void processInput(GLFWwindow *window) {
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-    glfwSetWindowShouldClose(window, true);
-}
-
-void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
-  glfwGetFramebufferSize(window, &SCR_WIDTH, &SCR_HEIGHT);
-  glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    std::cout << "Failed to open shader file at: " << filePath << " or " << fallbackPath << std::endl;
+    return "";
 }
 
 unsigned int setupShaders(const char *vSrc, const char *fSrc) {
@@ -95,23 +87,87 @@ unsigned int setupShaders(const char *vSrc, const char *fSrc) {
   return program;
 }
 
-void applyProjection(unsigned int shader, GLFWwindow *window) {
+// Global for trail quad
+unsigned int trailVAO = 0;
+unsigned int trailProgram = 0;
+
+void setupTrailQuad() {
+    float quadVertices[] = {
+        -1.0f,  1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f,
+         1.0f, -1.0f, 0.0f,
+
+        -1.0f,  1.0f, 0.0f,
+         1.0f, -1.0f, 0.0f,
+         1.0f,  1.0f, 0.0f
+    };
+    unsigned int VBO;
+    glGenVertexArrays(1, &trailVAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(trailVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+}
+
+//Boiler functions necessary for getting openGL up and running
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void processInput(GLFWwindow *window, float dt);
+void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D& cam);
+
+unsigned int shaderProgram = 0;
+
+void processInput(GLFWwindow *window, float dt) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, true);
+
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    camera.moveUp(dt);
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    camera.moveDown(dt);
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    camera.moveLeft(dt);
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    camera.moveRight(dt);
+}
+
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+  camera.adjustZoom(static_cast<float>(yoffset));
+}
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
+  glfwGetFramebufferSize(window, &SCR_WIDTH, &SCR_HEIGHT);
+  glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+}
+
+void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D& cam) {
   // 1. Get actual framebuffer size
   int frameWidth, frameHeight;
   glfwGetFramebufferSize(window, &frameWidth, &frameHeight);
 
   float aspect = static_cast<float>(frameWidth) / static_cast<float>(frameHeight);
 
-  // 2. Create projection matrix
+  // 2. Create projection matrix using camera zoom and position
   glm::mat4 projection;
+  float zoom = cam.zoom;
+  float left, right, bottom, top;
+
   if (aspect > 1.0f) {
-    projection = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1.0f, 1.0f);
+    left   = (cam.position.x - aspect) / zoom;
+    right  = (cam.position.x + aspect) / zoom;
+    bottom = (cam.position.y - 1.0f) / zoom;
+    top    = (cam.position.y + 1.0f) / zoom;
   } else {
-    projection = glm::ortho(-1.0f, 1.0f, -1.0f / aspect, 1.0f / aspect, -1.0f, 1.0f);
+    left   = (cam.position.x - 1.0f) / zoom;
+    right  = (cam.position.x + 1.0f) / zoom;
+    bottom = (cam.position.y - (1.0f / aspect)) / zoom;
+    top    = (cam.position.y + (1.0f / aspect)) / zoom;
   }
+  projection = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
 
   // 3. Send to GPU
-  // Use 'shader' (the parameter), not 'shaderProgram'
   int projLoc = glGetUniformLocation(shader, "projection");
   glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 }
@@ -138,6 +194,7 @@ int main() {
   }
   glfwMakeContextCurrent(window);
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+  glfwSetScrollCallback(window, scroll_callback);
 
   // glad: load all OpenGL function pointers
   if (!gladLoadGL(glfwGetProcAddress)) {
@@ -150,9 +207,50 @@ int main() {
   // Set the math for how colors mix (Standard Alpha Blending)
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  // build and compile shader program
-  unsigned int shaderProgram = setupShaders(vertexShaderSource, fragmentShaderSource);
+  // Fallback shader sources in case files are missing
+  const char* fallbackVS = "#version 330 core\n"
+                           "layout (location = 0) in vec3 aPos;\n"
+                           "uniform mat4 projection;\n"
+                           "uniform vec2 offset;\n"
+                           "uniform float scale;\n"
+                           "out vec2 localPos;\n"
+                           "out vec2 worldPos;\n"
+                           "void main() {\n"
+                           "   localPos = aPos.xy;\n"
+                           "   vec2 positioned = (aPos.xy * scale) + offset;\n"
+                           "   worldPos = positioned;\n"
+                           "   gl_Position = projection * vec4(positioned, 0.0, 1.0);\n"
+                           "}\0";
 
+  const char* fallbackFS = "#version 330 core\n"
+                           "out vec4 FragColor;\n"
+                           "in vec2 localPos;\n"
+                           "in vec2 worldPos;\n"
+                           "void main() {\n"
+                           "   float distToParticleCenter = length(localPos);\n"
+                           "   float particleAlpha = 1.0 - smoothstep(0.0, 1.0, distToParticleCenter);\n"
+                           "   float distToGalaxyCenter = length(worldPos);\n"
+                           "   float galaxyBrightness = 1.0 / (1.0 + distToGalaxyCenter * 1.5);\n"
+                           "   vec3 color = vec3(0.8, 0.9, 1.0) * galaxyBrightness;\n"
+                           "   FragColor = vec4(color, particleAlpha * 0.7);\n"
+                           "}\n\0";
+
+  // build and compile shader program from external files
+  std::string vSourceStr = readShaderFile("shaders/vertex.glsl");
+  std::string fSourceStr = readShaderFile("shaders/fragment.glsl");
+  
+  if (vSourceStr.empty() || fSourceStr.empty()) {
+      std::cout << "Using fallback shaders..." << std::endl;
+      shaderProgram = setupShaders(fallbackVS, fallbackFS);
+  } else {
+      shaderProgram = setupShaders(vSourceStr.c_str(), fSourceStr.c_str());
+  }
+
+  // Setup trails
+  setupTrailQuad();
+  const char* trailVS = "#version 330 core\nlayout (location = 0) in vec3 aPos; void main() { gl_Position = vec4(aPos, 1.0); }";
+  const char* trailFS = "#version 330 core\nout vec4 FragColor; void main() { FragColor = vec4(0.0, 0.0, 0.0, 0.3); }";
+  trailProgram = setupShaders(trailVS, trailFS);
 
   // Creates a circle, abstracted out to header file
   Circle circleRenderer(1.0f, 32);
@@ -163,58 +261,70 @@ int main() {
 
   //Making our tuning variables
   float minRad{0.003f}, maxRad{0.008f};
-  int numBodies{100};
-  float G = 0.001f;
+  int numBodies{200}; // Increased for galaxy look
+  float G = 0.0001f; // Matching the new G in universe.h
   float sunMass = 500.0f;
+
 
   //generating random coordinates thatll be the basis for our bodies spawning
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> posDist(-0.9f, 0.9f); // Stay away from very edges
+  // Standard distribution for a more "core-heavy" galaxy look
+  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+  std::uniform_real_distribution<float> radiusDist(0.15f, 0.9f); 
   std::uniform_real_distribution<float> sizeDist(minRad, maxRad);
 
   for (int i = 0; i < numBodies; i++) {
-    float x = posDist(gen);
-    float y = posDist(gen);
-
-    // 1. Calculate distance from Sun (at 0,0)
-    float r = std::sqrt(x * x + y * y);
-
-    // Avoid spawning planets inside the Sun or too close (prevents slingshots)
-    if (r < 0.1f) {
-      i--;
-      continue;
-    }
+    float theta = angleDist(gen);
+    float r = radiusDist(gen);
+    
+    float x = r * std::cos(theta);
+    float y = r * std::sin(theta);
 
     Planet *p = new Planet(x, y, 1.0f, sizeDist(gen));
 
-    // 2. Calculate the required speed for a circular orbit
-    float speed = std::sqrt((G * sunMass) / r);
-
-    // 3. Create a perpendicular velocity vector
-    // For a position (x, y), the perpendicular vector is (-y, x)
+    // Calculate velocity for a circular orbit: v = sqrt(G*M / r)
+    // We add a tiny bit of random variation to make it look "natural"
+    float orbitSpeed = std::sqrt((G * sunMass) / r);
+    
     glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
-    p->vel = unitTangent * speed;
+    p->vel = unitTangent * orbitSpeed;
 
     myUniverse.addBody(p);
   }
 
+  float deltaTime = 0.0f;
+  float lastFrame = 0.0f;
+
+  // Initial clear
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+
   // render loop
   while (!glfwWindowShouldClose(window)) {
-    processInput(window);
+    float currentFrame = static_cast<float>(glfwGetTime());
+    deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
 
-    //adds color to the window
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f); //black
-    glClear(GL_COLOR_BUFFER_BIT); //clear screen post loop
+    processInput(window, deltaTime);
+
+    // instead of full clear, draw a semi-transparent black quad to create trails
+    glUseProgram(trailProgram);
+    glBindVertexArray(trailVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // clear only depth if needed (we aren't using depth here, but good practice)
+    glClear(GL_DEPTH_BUFFER_BIT);
 
     //tells gpu to use this shader program for drawing
     glUseProgram(shaderProgram);
 
     //boiler code necessary to keep it dynamically scaling
-    applyProjection(shaderProgram, window);
+    applyProjection(shaderProgram, window, camera);
 
     //live update planatary circles and their gravity
-    myUniverse.updatePhysics(0.01f);
+    // Using deltaTime with a multiplier to slow down the whole simulation
+    myUniverse.updatePhysics(deltaTime * 0.5f);
 
     // draws the circle (abstracted out to the header file
     myUniverse.renderAll(shaderProgram, circleRenderer);
