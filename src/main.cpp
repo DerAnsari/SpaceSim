@@ -231,8 +231,15 @@ int main() {
                            "   float particleAlpha = 1.0 - smoothstep(0.0, 1.0, distToParticleCenter);\n"
                            "   float distToGalaxyCenter = length(worldPos);\n"
                            "   float galaxyBrightness = 1.0 / (1.0 + distToGalaxyCenter * 1.5);\n"
-                           "   vec3 color = vec3(0.8, 0.9, 1.0) * galaxyBrightness;\n"
-                           "   FragColor = vec4(color, particleAlpha * 0.7);\n"
+                           "   float angle = atan(worldPos.y, worldPos.x);\n"
+                           "   vec3 coreColor = vec3(1.0, 0.9, 0.7);\n"
+                           "   vec3 midColor  = vec3(0.8, 0.2, 0.9);\n"
+                           "   vec3 outerColor = vec3(0.1, 0.4, 1.0);\n"
+                           "   vec3 colorVariation = mix(coreColor, midColor, smoothstep(0.0, 0.4, distToGalaxyCenter));\n"
+                           "   colorVariation = mix(colorVariation, outerColor, smoothstep(0.4, 1.0, distToGalaxyCenter));\n"
+                           "   colorVariation += 0.15 * vec3(sin(angle), cos(angle), sin(angle * 0.5));\n"
+                           "   vec3 finalColor = colorVariation * galaxyBrightness * 1.5;\n"
+                           "   FragColor = vec4(finalColor, particleAlpha * 0.85);\n"
                            "}\n\0";
 
   // build and compile shader program from external files
@@ -257,13 +264,14 @@ int main() {
   Universe myUniverse;
 
   //adding the sun
-  myUniverse.addBody(new Star(0.0f, 0.0f, 500.0f, 0.04f));
+  myUniverse.addBody(new Star(0.0f, 0.0f, 10000.0f, 0.04f));
 
   //Making our tuning variables
-  float minRad{0.003f}, maxRad{0.008f};
-  int numBodies{200}; // Increased for galaxy look
-  float G = 0.0001f; // Matching the new G in universe.h
-  float sunMass = 500.0f;
+  float minRad{0.001f}, maxRad{0.003f}; // Even smaller for a "dusty" cloud feel
+  int numBodies{5000}; // 5000 bodies for that massive galaxy look
+  float G = 0.000005f; // Matching universe.h
+  float sunMass = 10000.0f;
+
 
 
   //generating random coordinates thatll be the basis for our bodies spawning
@@ -281,7 +289,7 @@ int main() {
     float x = r * std::cos(theta);
     float y = r * std::sin(theta);
 
-    Planet *p = new Planet(x, y, 1.0f, sizeDist(gen));
+    Planet *p = new Planet(x, y, 0.1f, sizeDist(gen));
 
     // Calculate velocity for a circular orbit: v = sqrt(G*M / r)
     // We add a tiny bit of random variation to make it look "natural"
@@ -323,8 +331,8 @@ int main() {
     applyProjection(shaderProgram, window, camera);
 
     //live update planatary circles and their gravity
-    // Using deltaTime with a multiplier to slow down the whole simulation
-    myUniverse.updatePhysics(deltaTime * 0.5f);
+    // Using deltaTime with a multiplier to slow down the whole simulation significantly
+    myUniverse.updatePhysics(deltaTime * 0.2f);
 
     // draws the circle (abstracted out to the header file
     myUniverse.renderAll(shaderProgram, circleRenderer);
