@@ -5,6 +5,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+// ImGui includes
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 //Own Dependencies
 #include "../include/circle.h"
 #include "../include/SimObject.h"
@@ -15,7 +20,7 @@
 #include <sstream>
 #include <random>
 
-using std::cout, std::endl;
+using std::cout, std::endl, std::string;
 
 //Sets width and height of the main window
 int SCR_WIDTH = 800;
@@ -23,8 +28,17 @@ int SCR_HEIGHT = 600;
 
 Camera2D camera;
 
+struct SimulationSettings {
+    float minRad = 0.001f;
+    float maxRad = 0.003f;
+    int numBodies = 5000;
+    float sunMass = 10000.0f;
+    float simSpeed = 0.2f;
+    bool showTrails = true;
+} settings;
+
 // Helper to read shader files
-std::string readShaderFile(const char* filePath) {
+string readShaderFile(const char* filePath) {
     // Try original path
     std::ifstream file(filePath);
     if (file.is_open()) {
@@ -85,6 +99,38 @@ unsigned int setupShaders(const char *vSrc, const char *fSrc) {
   glDeleteShader(vShader);
   glDeleteShader(fShader);
   return program;
+}
+
+void generateGalaxy(Universe& universe, const SimulationSettings& settings) {
+    universe.clear();
+    
+    // adding the sun
+    universe.addBody(new Star(0.0f, 0.0f, settings.sunMass, 0.04f));
+
+    // generating random coordinates thatll be the basis for our bodies spawning
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+    std::uniform_real_distribution<float> radiusDist(0.15f, 0.9f); 
+    std::uniform_real_distribution<float> sizeDist(settings.minRad, settings.maxRad);
+
+    for (int i = 0; i < settings.numBodies; i++) {
+        float theta = angleDist(gen);
+        float r = radiusDist(gen);
+        
+        float x = r * std::cos(theta);
+        float y = r * std::sin(theta);
+
+        Planet *p = new Planet(x, y, 0.1f, sizeDist(gen));
+
+        // Calculate velocity for a circular orbit: v = sqrt(G*M / r)
+        float orbitSpeed = std::sqrt((universe.G * settings.sunMass) / r);
+        
+        glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
+        p->vel = unitTangent * orbitSpeed;
+
+        universe.addBody(p);
+    }
 }
 
 // Global for trail quad
@@ -172,6 +218,43 @@ void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D& cam) {
   glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 }
 
+void renderUI(Universe& universe) {
+    ImGui::Begin("Simulation Control");
+
+    ImGui::Text("Bodies: %zu", universe.getBodyCount());
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    ImGui::Separator();
+    ImGui::Text("Physics Settings");
+    ImGui::SliderFloat("G (Gravity)", &universe.G, 0.0f, 0.0001f, "%.7f");
+    ImGui::SliderFloat("Softening", &universe.softening, 0.0f, 0.2f);
+    ImGui::SliderFloat("Theta (BH)", &universe.theta, 0.1f, 1.0f);
+    ImGui::SliderFloat("Sim Speed", &settings.simSpeed, 0.0f, 1.0f);
+
+    ImGui::Separator();
+    ImGui::Text("Galaxy Generation");
+    ImGui::SliderInt("Num Bodies", &settings.numBodies, 100, 10000);
+    ImGui::SliderFloat("Sun Mass", &settings.sunMass, 1000.0f, 50000.0f);
+    ImGui::SliderFloat("Min Particle Rad", &settings.minRad, 0.0001f, 0.01f);
+    ImGui::SliderFloat("Max Particle Rad", &settings.maxRad, 0.0001f, 0.01f);
+    
+    if (ImGui::Button("Regenerate Galaxy")) {
+        generateGalaxy(universe, settings);
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Camera");
+    ImGui::Text("Pos: %.2f, %.2f", camera.position.x, camera.position.y);
+    ImGui::Text("Zoom: %.2f", camera.zoom);
+    if (ImGui::Button("Reset Camera")) {
+        camera.position = glm::vec2(0.0f);
+        camera.zoom = 1.0f;
+    }
+
+    ImGui::Checkbox("Show Trails", &settings.showTrails);
+
+    ImGui::End();
+}
 
 int main() {
   // glfw: initialize and configure
@@ -201,6 +284,19 @@ int main() {
     cout << "Failed to initialize GLAD" << endl;
     return -1;
   }
+
+  // Setup Dear ImGui context
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO& io = ImGui::GetIO(); (void)io;
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+
+  // Setup Dear ImGui style
+  ImGui::StyleColorsDark();
+
+  // Setup Platform/Renderer backends
+  ImGui_ImplGlfw_InitForOpenGL(window, true);
+  ImGui_ImplOpenGL3_Init("#version 330");
 
   // Enable Blending
   glEnable(GL_BLEND);
@@ -243,11 +339,11 @@ int main() {
                            "}\n\0";
 
   // build and compile shader program from external files
-  std::string vSourceStr = readShaderFile("shaders/vertex.glsl");
-  std::string fSourceStr = readShaderFile("shaders/fragment.glsl");
+  string vSourceStr = readShaderFile("shaders/vertex.glsl");
+  string fSourceStr = readShaderFile("shaders/fragment.glsl");
   
   if (vSourceStr.empty() || fSourceStr.empty()) {
-      std::cout << "Using fallback shaders..." << std::endl;
+      cout << "Using fallback shaders..." << endl;
       shaderProgram = setupShaders(fallbackVS, fallbackFS);
   } else {
       shaderProgram = setupShaders(vSourceStr.c_str(), fSourceStr.c_str());
@@ -263,43 +359,8 @@ int main() {
   Circle circleRenderer(1.0f, 32);
   Universe myUniverse;
 
-  //adding the sun
-  myUniverse.addBody(new Star(0.0f, 0.0f, 10000.0f, 0.04f));
-
-  //Making our tuning variables
-  float minRad{0.001f}, maxRad{0.003f}; // Even smaller for a "dusty" cloud feel
-  int numBodies{5000}; // 5000 bodies for that massive galaxy look
-  float G = 0.000005f; // Matching universe.h
-  float sunMass = 10000.0f;
-
-
-
-  //generating random coordinates thatll be the basis for our bodies spawning
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  // Standard distribution for a more "core-heavy" galaxy look
-  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
-  std::uniform_real_distribution<float> radiusDist(0.15f, 0.9f); 
-  std::uniform_real_distribution<float> sizeDist(minRad, maxRad);
-
-  for (int i = 0; i < numBodies; i++) {
-    float theta = angleDist(gen);
-    float r = radiusDist(gen);
-    
-    float x = r * std::cos(theta);
-    float y = r * std::sin(theta);
-
-    Planet *p = new Planet(x, y, 0.1f, sizeDist(gen));
-
-    // Calculate velocity for a circular orbit: v = sqrt(G*M / r)
-    // We add a tiny bit of random variation to make it look "natural"
-    float orbitSpeed = std::sqrt((G * sunMass) / r);
-    
-    glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
-    p->vel = unitTangent * orbitSpeed;
-
-    myUniverse.addBody(p);
-  }
+  // Initial galaxy generation
+  generateGalaxy(myUniverse, settings);
 
   float deltaTime = 0.0f;
   float lastFrame = 0.0f;
@@ -314,12 +375,25 @@ int main() {
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    processInput(window, deltaTime);
+    glfwPollEvents();
+
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    if (!io.WantCaptureKeyboard && !io.WantCaptureMouse) {
+        processInput(window, deltaTime);
+    }
 
     // instead of full clear, draw a semi-transparent black quad to create trails
-    glUseProgram(trailProgram);
-    glBindVertexArray(trailVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    if (settings.showTrails) {
+        glUseProgram(trailProgram);
+        glBindVertexArray(trailVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    } else {
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
 
     // clear only depth if needed (we aren't using depth here, but good practice)
     glClear(GL_DEPTH_BUFFER_BIT);
@@ -331,18 +405,25 @@ int main() {
     applyProjection(shaderProgram, window, camera);
 
     //live update planatary circles and their gravity
-    // Using deltaTime with a multiplier to slow down the whole simulation significantly
-    myUniverse.updatePhysics(deltaTime * 0.2f);
+    myUniverse.updatePhysics(deltaTime * settings.simSpeed);
 
     // draws the circle (abstracted out to the header file
     myUniverse.renderAll(shaderProgram, circleRenderer);
 
+    // Rendering UI
+    renderUI(myUniverse);
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     glfwSwapBuffers(window);
-    glfwPollEvents();
   }
 
   //clean Up
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplGlfw_Shutdown();
+  ImGui::DestroyContext();
+
   glDeleteProgram(shaderProgram);
   glfwTerminate();
   return 0;

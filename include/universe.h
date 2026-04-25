@@ -12,8 +12,21 @@ private:
   std::vector<SimObject *> bodies;
 
 public:
+  float G = 0.000005f;
+  float softening = 0.05f;
+  float theta = 0.6f;
+
   void addBody(SimObject *b) {
     bodies.push_back(b);
+  }
+
+  void clear() {
+    for (auto b : bodies) delete b;
+    bodies.clear();
+  }
+
+  size_t getBodyCount() const {
+      return bodies.size();
   }
 
   void renderAll(unsigned int shader, Circle &renderer) {
@@ -30,10 +43,6 @@ public:
    */
   void updatePhysics(float dt) {
     if (bodies.empty()) return;
-
-    const float G = 0.000005f; // Lowered to account for 5x more mass in the system
-    const float softening = 0.05f; // Slightly more softening for high density
-    const float theta = 0.6f; // Lower theta for higher precision (prevents drift)
 
     // 1. Calculate boundaries of the universe for the root QuadNode
     float xMin = bodies[0]->pos.x, xMax = bodies[0]->pos.x;
