@@ -127,7 +127,7 @@ void generateGalaxy(Universe& universe, const SimulationSettings& settings) {
         float orbitSpeed = std::sqrt((universe.G * settings.sunMass) / r);
         
         glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
-        p->vel = unitTangent * orbitSpeed;
+        p->setVel(unitTangent * orbitSpeed);
 
         universe.addBody(p);
     }
@@ -306,14 +306,14 @@ int main() {
   // Fallback shader sources in case files are missing
   const char* fallbackVS = "#version 330 core\n"
                            "layout (location = 0) in vec3 aPos;\n"
+                           "layout (location = 1) in vec2 aOffset;\n"
+                           "layout (location = 2) in float aScale;\n"
                            "uniform mat4 projection;\n"
-                           "uniform vec2 offset;\n"
-                           "uniform float scale;\n"
                            "out vec2 localPos;\n"
                            "out vec2 worldPos;\n"
                            "void main() {\n"
                            "   localPos = aPos.xy;\n"
-                           "   vec2 positioned = (aPos.xy * scale) + offset;\n"
+                           "   vec2 positioned = (aPos.xy * aScale) + aOffset;\n"
                            "   worldPos = positioned;\n"
                            "   gl_Position = projection * vec4(positioned, 0.0, 1.0);\n"
                            "}\0";

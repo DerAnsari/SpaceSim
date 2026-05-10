@@ -6,38 +6,47 @@
 
 // Base class (Inheritance)
 class SimObject {
-public:
+protected:
   glm::vec2 pos;
   glm::vec2 vel;
   float mass;
   float radius;
 
+public:
   SimObject(float x, float y, float m, float r)
     : pos(x, y), vel(0.0f), mass(m), radius(r) {
   }
 
   virtual ~SimObject() = default;
 
-  // This is Polymorphism: different objects draw differently
+  // Polymorphism: different objects draw by queuing themselves into the renderer
   virtual void draw(unsigned int shader, Circle &renderer) = 0;
 
+  void applyForce(glm::vec2 force, float dt) {
+      glm::vec2 acceleration = force / mass;
+      vel += acceleration * dt;
+  }
+
+  // Symplectic Euler: update position using the already updated velocity
   void update(float dt) {
     pos += vel * dt;
-
-    // Bounce off walls
-    //if (pos.x > 1.0f || pos.x < -1.0f) vel.x *= -1.0f;
-    //if (pos.y > 1.0f || pos.y < -1.0f) vel.y *= -1.0f;
   }
+
+  // Getters for Physics & Rendering
+  glm::vec2 getPos() const { return pos; }
+  glm::vec2 getVel() const { return vel; }
+  void setVel(glm::vec2 v) { vel = v; }
+  float getMass() const { return mass; }
+  float getRadius() const { return radius; }
 };
 
-// A Star (maybe it's bigger/brighter)
+// A Star
 class Star : public SimObject {
 public:
   using SimObject::SimObject;
 
   void draw(unsigned int shader, Circle &renderer) override {
-    // You could set a different color uniform here
-    renderer.draw(shader, pos.x, pos.y, radius);
+    renderer.queueInstance(pos.x, pos.y, radius);
   }
 };
 
@@ -47,7 +56,7 @@ public:
   using SimObject::SimObject;
 
   void draw(unsigned int shader, Circle &renderer) override {
-    renderer.draw(shader, pos.x, pos.y, radius);
+    renderer.queueInstance(pos.x, pos.y, radius);
   }
 };
 

@@ -29,10 +29,11 @@ public:
       return bodies.size();
   }
 
-  void renderAll(unsigned int shader, Circle &renderer) {
+  void renderAll(unsigned int shader, Circle &renderer) const {
     for (auto b: bodies) {
       b->draw(shader, renderer);
     }
+    renderer.flushInstanced(shader);
   }
 
   /**
@@ -45,13 +46,13 @@ public:
     if (bodies.empty()) return;
 
     // 1. Calculate boundaries of the universe for the root QuadNode
-    float xMin = bodies[0]->pos.x, xMax = bodies[0]->pos.x;
-    float yMin = bodies[0]->pos.y, yMax = bodies[0]->pos.y;
+    float xMin = bodies[0]->getPos().x, xMax = bodies[0]->getPos().x;
+    float yMin = bodies[0]->getPos().y, yMax = bodies[0]->getPos().y;
     for (auto b : bodies) {
-        xMin = std::min(xMin, b->pos.x);
-        xMax = std::max(xMax, b->pos.x);
-        yMin = std::min(yMin, b->pos.y);
-        yMax = std::max(yMax, b->pos.y);
+        xMin = std::min(xMin, b->getPos().x);
+        xMax = std::max(xMax, b->getPos().x);
+        yMin = std::min(yMin, b->getPos().y);
+        yMax = std::max(yMax, b->getPos().y);
     }
 
     // Make the boundary square to keep the quadtree balanced
@@ -65,13 +66,15 @@ public:
         root.insert(b);
     }
 
-    // 3. Calculate forces using the Quadtree
-    for (size_t i = 0; i < bodies.size(); ++i) {
+    // 3. Calculate forces using the Quadtree (Parallelized with OpenMP)
+    #pragma omp parallel for
+    for (int i = 0; i < (int)bodies.size(); ++i) {
+      SimObject* b = bodies[i];
       // The Sun (mass > 100) stays fixed at the center
-      if (bodies[i]->mass > 100.0f) continue;
+      if (b->getMass() > 100.0f) continue;
 
-      glm::vec2 acceleration = root.calculateForce(bodies[i], G, softening, theta);
-      bodies[i]->vel += acceleration * dt;
+      glm::vec2 acceleration = root.calculateForce(b, G, softening, theta);
+      b->setVel(b->getVel() + acceleration * dt);
     }
 
     // 4. Update positions

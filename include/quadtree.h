@@ -41,8 +41,8 @@ public:
         if (totalMass == 0) {
             // First body in this empty node
             body = b;
-            centerOfMass = b->pos;
-            totalMass = b->mass;
+            centerOfMass = b->getPos();
+            totalMass = b->getMass();
             return;
         }
 
@@ -59,8 +59,8 @@ public:
         insertIntoChild(b);
         
         // Update total center of mass: (m1*p1 + m2*p2) / (m1 + m2)
-        centerOfMass = (centerOfMass * totalMass + b->pos * b->mass) / (totalMass + b->mass);
-        totalMass += b->mass;
+        centerOfMass = (centerOfMass * totalMass + b->getPos() * b->getMass()) / (totalMass + b->getMass());
+        totalMass += b->getMass();
     }
 
     /**
@@ -70,16 +70,16 @@ public:
     glm::vec2 calculateForce(SimObject* target, float G, float softening, float theta) {
         if (body == target) return glm::vec2(0.0f);
 
-        glm::vec2 diff = centerOfMass - target->pos;
+        glm::vec2 diff = centerOfMass - target->getPos();
         float d2 = glm::dot(diff, diff) + (softening * softening);
-        float d = std::sqrt(d2);
 
         // s = width of the quadrant
         float s = xMax - xMin;
 
-        // Barnes-Hut Criterion: if s/d < theta, treat the node as a single point mass
-        if (isLeaf || (s / d) < theta) {
+        // Barnes-Hut Criterion: if s/d < theta (or s^2/d^2 < theta^2), treat the node as a single point mass
+        if (isLeaf || (s * s / d2) < (theta * theta)) {
             if (totalMass == 0) return glm::vec2(0.0f);
+            float d = std::sqrt(d2);
             float accelMag = (G * totalMass) / d2;
             return (accelMag / d) * diff;
         }
@@ -109,11 +109,11 @@ private:
         float xMid = (xMin + xMax) / 2.0f;
         float yMid = (yMin + yMax) / 2.0f;
 
-        if (b->pos.y >= yMid) {
-            if (b->pos.x <= xMid) children[0]->insert(b);
+        if (b->getPos().y >= yMid) {
+            if (b->getPos().x <= xMid) children[0]->insert(b);
             else children[1]->insert(b);
         } else {
-            if (b->pos.x <= xMid) children[2]->insert(b);
+            if (b->getPos().x <= xMid) children[2]->insert(b);
             else children[3]->insert(b);
         }
     }
