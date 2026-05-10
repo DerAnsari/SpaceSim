@@ -2,6 +2,8 @@
 
 SpaceSim is a high-performance, real-time 2D gravity simulation built to explore the complexities of the N-body problem. Developed in C++ using modern Object-Oriented Design (OOD) principles, the project simulates thousands of celestial bodies interacting under mutual gravitational attraction at interactive speeds.
 
+[![SpaceSim Demo](https://img.youtube.com/vi/qdOf5vv4h2Y/maxresdefault.jpg)](https://www.youtube.com/watch?v=qdOf5vv4h2Y)
+
 ## Features
 - **Real-Time Performance:** Handles upwards of 10,000 simultaneous bodies at a stable 60+ FPS.
 - **Optimized Physics:** Utilizes the Barnes-Hut algorithm to reduce computational complexity from $O(N^2)$ to $O(N \log N)$.
