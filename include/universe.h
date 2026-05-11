@@ -6,10 +6,10 @@
 #include "SimObject.h"
 #include "quadtree.h"
 #include <algorithm>
+using std::vector;
 
 class Universe {
-private:
-  std::vector<SimObject *> bodies;
+  vector<SimObject *> bodies;
 
 public:
   float G = 0.000005f;
@@ -42,7 +42,7 @@ public:
    * 2. Build a Quadtree.
    * 3. For each body, calculate forces using the tree approximation.
    */
-  void updatePhysics(float dt) {
+  void updatePhysics(float dt) const {
     if (bodies.empty()) return;
 
     // 1. Calculate boundaries of the universe for the root QuadNode
@@ -56,19 +56,19 @@ public:
     }
 
     // Make the boundary square to keep the quadtree balanced
-    float size = std::max(xMax - xMin, yMax - yMin) * 1.1f; // 10% padding
+    float size = std::max(xMax - xMin, yMax - yMin) * 1.1f;
     float xMid = (xMin + xMax) / 2.0f;
     float yMid = (yMin + yMax) / 2.0f;
 
     // 2. Build the Quadtree
-    QuadNode root(xMid - size/2, xMid + size/2, yMid - size/2, yMid + size/2);
+    QuadNode<SimObject> root(xMid - size/2, xMid + size/2, yMid - size/2, yMid + size/2);
     for (auto b : bodies) {
         root.insert(b);
     }
 
     // 3. Calculate forces using the Quadtree (Parallelized with OpenMP)
     #pragma omp parallel for
-    for (int i = 0; i < (int)bodies.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(bodies.size()); ++i) {
       SimObject* b = bodies[i];
       // The Sun (mass > 100) stays fixed at the center
       if (b->getMass() > 100.0f) continue;

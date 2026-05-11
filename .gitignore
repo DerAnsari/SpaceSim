@@ -9,6 +9,10 @@ build/
 # CMake specific
 CMakeCache.txt
 CMakeFiles/
+/build
+/build-win
+imgui.ini
+mingw_toolchain.cmake
 cmake_install.cmake
 compile_commands.json
 install_manifest.txt

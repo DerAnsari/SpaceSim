@@ -29,35 +29,35 @@ int SCR_HEIGHT = 600;
 Camera2D camera;
 
 struct SimulationSettings {
-    float minRad = 0.001f;
-    float maxRad = 0.003f;
-    int numBodies = 5000;
-    float sunMass = 10000.0f;
-    float simSpeed = 0.2f;
-    bool showTrails = true;
+  float minRad = 0.001f;
+  float maxRad = 0.003f;
+  int numBodies = 5000;
+  float sunMass = 10000.0f;
+  float simSpeed = 0.2f;
+  bool showTrails = true;
 } settings;
 
 // Helper to read shader files
-string readShaderFile(const char* filePath) {
-    // Try original path
-    std::ifstream file(filePath);
-    if (file.is_open()) {
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        return buffer.str();
-    }
+string readShaderFile(const char *filePath) {
+  // Try original path
+  std::ifstream file(filePath);
+  if (file.is_open()) {
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+  }
 
-    // Try parent directory (common when running from a build folder)
-    std::string fallbackPath = "../" + std::string(filePath);
-    std::ifstream fallbackFile(fallbackPath);
-    if (fallbackFile.is_open()) {
-        std::stringstream buffer;
-        buffer << fallbackFile.rdbuf();
-        return buffer.str();
-    }
+  // Try parent directory (common when running from a build folder)
+  std::string fallbackPath = "../" + std::string(filePath);
+  std::ifstream fallbackFile(fallbackPath);
+  if (fallbackFile.is_open()) {
+    std::stringstream buffer;
+    buffer << fallbackFile.rdbuf();
+    return buffer.str();
+  }
 
-    std::cout << "Failed to open shader file at: " << filePath << " or " << fallbackPath << std::endl;
-    return "";
+  std::cout << "Failed to open shader file at: " << filePath << " or " << fallbackPath << std::endl;
+  return "";
 }
 
 unsigned int setupShaders(const char *vSrc, const char *fSrc) {
@@ -101,36 +101,42 @@ unsigned int setupShaders(const char *vSrc, const char *fSrc) {
   return program;
 }
 
-void generateGalaxy(Universe& universe, const SimulationSettings& settings) {
-    universe.clear();
-    
-    // adding the sun
-    universe.addBody(new Star(0.0f, 0.0f, settings.sunMass, 0.04f));
+void generateGalaxy(Universe &universe, const SimulationSettings &settings) {
+  universe.clear();
 
-    // generating random coordinates thatll be the basis for our bodies spawning
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
-    std::uniform_real_distribution<float> radiusDist(0.15f, 0.9f); 
-    std::uniform_real_distribution<float> sizeDist(settings.minRad, settings.maxRad);
+  // adding the sun
+  universe.addBody(new Star(0.0f, 0.0f, settings.sunMass, 0.04f));
 
-    for (int i = 0; i < settings.numBodies; i++) {
-        float theta = angleDist(gen);
-        float r = radiusDist(gen);
-        
-        float x = r * std::cos(theta);
-        float y = r * std::sin(theta);
+  // generating random coordinates thatll be the basis for our bodies spawning
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+  std::uniform_real_distribution<float> radiusDist(0.15f, 0.9f);
+  std::uniform_real_distribution<float> sizeDist(settings.minRad, settings.maxRad);
 
-        Planet *p = new Planet(x, y, 0.1f, sizeDist(gen));
+  // Requirement: Lambdas (Advanced C++ Feature)
+  auto logGeneration = [](int count) {
+    std::cout << "Generating Galaxy with " << count << " bodies..." << std::endl;
+  };
+  logGeneration(settings.numBodies);
 
-        // Calculate velocity for a circular orbit: v = sqrt(G*M / r)
-        float orbitSpeed = std::sqrt((universe.G * settings.sunMass) / r);
-        
-        glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
-        p->setVel(unitTangent * orbitSpeed);
+  for (int i = 0; i < settings.numBodies; i++) {
+    float theta = angleDist(gen);
+    float r = radiusDist(gen);
 
-        universe.addBody(p);
-    }
+    float x = r * std::cos(theta);
+    float y = r * std::sin(theta);
+
+    Planet *p = new Planet(x, y, 0.1f, sizeDist(gen));
+
+    // Calculate velocity for a circular orbit: v = sqrt(G*M / r)
+    float orbitSpeed = std::sqrt((universe.G * settings.sunMass) / r);
+
+    glm::vec2 unitTangent = glm::normalize(glm::vec2(-y, x));
+    p->setVel(unitTangent * orbitSpeed);
+
+    universe.addBody(p);
+  }
 }
 
 // Global for trail quad
@@ -138,30 +144,33 @@ unsigned int trailVAO = 0;
 unsigned int trailProgram = 0;
 
 void setupTrailQuad() {
-    float quadVertices[] = {
-        -1.0f,  1.0f, 0.0f,
-        -1.0f, -1.0f, 0.0f,
-         1.0f, -1.0f, 0.0f,
+  float quadVertices[] = {
+    -1.0f, 1.0f, 0.0f,
+    -1.0f, -1.0f, 0.0f,
+    1.0f, -1.0f, 0.0f,
 
-        -1.0f,  1.0f, 0.0f,
-         1.0f, -1.0f, 0.0f,
-         1.0f,  1.0f, 0.0f
-    };
-    unsigned int VBO;
-    glGenVertexArrays(1, &trailVAO);
-    glGenBuffers(1, &VBO);
-    glBindVertexArray(trailVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    -1.0f, 1.0f, 0.0f,
+    1.0f, -1.0f, 0.0f,
+    1.0f, 1.0f, 0.0f
+  };
+  unsigned int VBO;
+  glGenVertexArrays(1, &trailVAO);
+  glGenBuffers(1, &VBO);
+  glBindVertexArray(trailVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *) 0);
 }
 
 //Boiler functions necessary for getting openGL up and running
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
+
 void processInput(GLFWwindow *window, float dt);
-void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D& cam);
+
+void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D &cam);
 
 unsigned int shaderProgram = 0;
 
@@ -179,7 +188,7 @@ void processInput(GLFWwindow *window, float dt) {
     camera.moveRight(dt);
 }
 
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
   camera.adjustZoom(static_cast<float>(yoffset));
 }
 
@@ -188,72 +197,70 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 }
 
-void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D& cam) {
-  // 1. Get actual framebuffer size
+void applyProjection(unsigned int shader, GLFWwindow *window, Camera2D &cam) {
   int frameWidth, frameHeight;
   glfwGetFramebufferSize(window, &frameWidth, &frameHeight);
 
   float aspect = static_cast<float>(frameWidth) / static_cast<float>(frameHeight);
 
-  // 2. Create projection matrix using camera zoom and position
   glm::mat4 projection;
   float zoom = cam.zoom;
   float left, right, bottom, top;
 
   if (aspect > 1.0f) {
-    left   = (cam.position.x - aspect) / zoom;
-    right  = (cam.position.x + aspect) / zoom;
+    left = (cam.position.x - aspect) / zoom;
+    right = (cam.position.x + aspect) / zoom;
     bottom = (cam.position.y - 1.0f) / zoom;
-    top    = (cam.position.y + 1.0f) / zoom;
+    top = (cam.position.y + 1.0f) / zoom;
   } else {
-    left   = (cam.position.x - 1.0f) / zoom;
-    right  = (cam.position.x + 1.0f) / zoom;
+    left = (cam.position.x - 1.0f) / zoom;
+    right = (cam.position.x + 1.0f) / zoom;
     bottom = (cam.position.y - (1.0f / aspect)) / zoom;
-    top    = (cam.position.y + (1.0f / aspect)) / zoom;
+    top = (cam.position.y + (1.0f / aspect)) / zoom;
   }
   projection = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
 
-  // 3. Send to GPU
   int projLoc = glGetUniformLocation(shader, "projection");
   glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 }
 
-void renderUI(Universe& universe) {
-    ImGui::Begin("Simulation Control");
+void renderUI(Universe &universe) {
+  ImGui::Begin("Simulation Control");
 
-    ImGui::Text("Bodies: %zu", universe.getBodyCount());
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+  ImGui::Text("Bodies: %zu", universe.getBodyCount());
+  ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate,
+              ImGui::GetIO().Framerate);
 
-    ImGui::Separator();
-    ImGui::Text("Physics Settings");
-    ImGui::SliderFloat("G (Gravity)", &universe.G, 0.0f, 0.0001f, "%.7f");
-    ImGui::SliderFloat("Softening", &universe.softening, 0.0f, 0.2f);
-    ImGui::SliderFloat("Theta (BH)", &universe.theta, 0.1f, 1.0f);
-    ImGui::SliderFloat("Sim Speed", &settings.simSpeed, 0.0f, 1.0f);
+  ImGui::Separator();
+  ImGui::Text("Physics Settings");
+  ImGui::SliderFloat("G (Gravity)", &universe.G, 0.0f, 0.0001f, "%.7f");
+  ImGui::SliderFloat("Softening", &universe.softening, 0.0f, 0.2f);
+  ImGui::SliderFloat("Theta (BH)", &universe.theta, 0.1f, 1.0f);
+  ImGui::SliderFloat("Sim Speed", &settings.simSpeed, 0.0f, 1.0f);
 
-    ImGui::Separator();
-    ImGui::Text("Galaxy Generation");
-    ImGui::SliderInt("Num Bodies", &settings.numBodies, 100, 10000);
-    ImGui::SliderFloat("Sun Mass", &settings.sunMass, 1000.0f, 50000.0f);
-    ImGui::SliderFloat("Min Particle Rad", &settings.minRad, 0.0001f, 0.01f);
-    ImGui::SliderFloat("Max Particle Rad", &settings.maxRad, 0.0001f, 0.01f);
-    
-    if (ImGui::Button("Regenerate Galaxy")) {
-        generateGalaxy(universe, settings);
-    }
+  ImGui::Separator();
+  ImGui::Text("Galaxy Generation");
+  ImGui::SliderInt("Num Bodies", &settings.numBodies, 100, 10000);
+  ImGui::SliderFloat("Sun Mass", &settings.sunMass, 1000.0f, 50000.0f);
+  ImGui::SliderFloat("Min Particle Rad", &settings.minRad, 0.0001f, 0.01f);
+  ImGui::SliderFloat("Max Particle Rad", &settings.maxRad, 0.0001f, 0.01f);
 
-    ImGui::Separator();
-    ImGui::Text("Camera");
-    ImGui::Text("Pos: %.2f, %.2f", camera.position.x, camera.position.y);
-    ImGui::Text("Zoom: %.2f", camera.zoom);
-    if (ImGui::Button("Reset Camera")) {
-        camera.position = glm::vec2(0.0f);
-        camera.zoom = 1.0f;
-    }
+  if (ImGui::Button("Regenerate Galaxy")) {
+    generateGalaxy(universe, settings);
+  }
 
-    ImGui::Checkbox("Show Trails", &settings.showTrails);
+  ImGui::Separator();
+  ImGui::Text("Camera");
+  ImGui::Text("Pos: %.2f, %.2f", camera.position.x, camera.position.y);
+  ImGui::Text("Zoom: %.2f", camera.zoom);
+  if (ImGui::Button("Reset Camera")) {
+    camera.position = glm::vec2(0.0f);
+    camera.zoom = 1.0f;
+  }
 
-    ImGui::End();
+  ImGui::Checkbox("Show Trails", &settings.showTrails);
+
+  ImGui::End();
 }
 
 int main() {
@@ -288,8 +295,9 @@ int main() {
   // Setup Dear ImGui context
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
-  ImGuiIO& io = ImGui::GetIO(); (void)io;
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+  ImGuiIO &io = ImGui::GetIO();
+  (void) io;
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 
   // Setup Dear ImGui style
   ImGui::StyleColorsDark();
@@ -304,55 +312,56 @@ int main() {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   // Fallback shader sources in case files are missing
-  const char* fallbackVS = "#version 330 core\n"
-                           "layout (location = 0) in vec3 aPos;\n"
-                           "layout (location = 1) in vec2 aOffset;\n"
-                           "layout (location = 2) in float aScale;\n"
-                           "uniform mat4 projection;\n"
-                           "out vec2 localPos;\n"
-                           "out vec2 worldPos;\n"
-                           "void main() {\n"
-                           "   localPos = aPos.xy;\n"
-                           "   vec2 positioned = (aPos.xy * aScale) + aOffset;\n"
-                           "   worldPos = positioned;\n"
-                           "   gl_Position = projection * vec4(positioned, 0.0, 1.0);\n"
-                           "}\0";
+  const char *fallbackVS = "#version 330 core\n"
+      "layout (location = 0) in vec3 aPos;\n"
+      "layout (location = 1) in vec2 aOffset;\n"
+      "layout (location = 2) in float aScale;\n"
+      "uniform mat4 projection;\n"
+      "out vec2 localPos;\n"
+      "out vec2 worldPos;\n"
+      "void main() {\n"
+      "   localPos = aPos.xy;\n"
+      "   vec2 positioned = (aPos.xy * aScale) + aOffset;\n"
+      "   worldPos = positioned;\n"
+      "   gl_Position = projection * vec4(positioned, 0.0, 1.0);\n"
+      "}\0";
 
-  const char* fallbackFS = "#version 330 core\n"
-                           "out vec4 FragColor;\n"
-                           "in vec2 localPos;\n"
-                           "in vec2 worldPos;\n"
-                           "void main() {\n"
-                           "   float distToParticleCenter = length(localPos);\n"
-                           "   float particleAlpha = 1.0 - smoothstep(0.0, 1.0, distToParticleCenter);\n"
-                           "   float distToGalaxyCenter = length(worldPos);\n"
-                           "   float galaxyBrightness = 1.0 / (1.0 + distToGalaxyCenter * 1.5);\n"
-                           "   float angle = atan(worldPos.y, worldPos.x);\n"
-                           "   vec3 coreColor = vec3(1.0, 0.9, 0.7);\n"
-                           "   vec3 midColor  = vec3(0.8, 0.2, 0.9);\n"
-                           "   vec3 outerColor = vec3(0.1, 0.4, 1.0);\n"
-                           "   vec3 colorVariation = mix(coreColor, midColor, smoothstep(0.0, 0.4, distToGalaxyCenter));\n"
-                           "   colorVariation = mix(colorVariation, outerColor, smoothstep(0.4, 1.0, distToGalaxyCenter));\n"
-                           "   colorVariation += 0.15 * vec3(sin(angle), cos(angle), sin(angle * 0.5));\n"
-                           "   vec3 finalColor = colorVariation * galaxyBrightness * 1.5;\n"
-                           "   FragColor = vec4(finalColor, particleAlpha * 0.85);\n"
-                           "}\n\0";
+  const char *fallbackFS = "#version 330 core\n"
+      "out vec4 FragColor;\n"
+      "in vec2 localPos;\n"
+      "in vec2 worldPos;\n"
+      "void main() {\n"
+      "   float distToParticleCenter = length(localPos);\n"
+      "   float particleAlpha = 1.0 - smoothstep(0.0, 1.0, distToParticleCenter);\n"
+      "   float distToGalaxyCenter = length(worldPos);\n"
+      "   float galaxyBrightness = 1.0 / (1.0 + distToGalaxyCenter * 1.5);\n"
+      "   float angle = atan(worldPos.y, worldPos.x);\n"
+      "   vec3 coreColor = vec3(1.0, 0.9, 0.7);\n"
+      "   vec3 midColor  = vec3(0.8, 0.2, 0.9);\n"
+      "   vec3 outerColor = vec3(0.1, 0.4, 1.0);\n"
+      "   vec3 colorVariation = mix(coreColor, midColor, smoothstep(0.0, 0.4, distToGalaxyCenter));\n"
+      "   colorVariation = mix(colorVariation, outerColor, smoothstep(0.4, 1.0, distToGalaxyCenter));\n"
+      "   colorVariation += 0.15 * vec3(sin(angle), cos(angle), sin(angle * 0.5));\n"
+      "   vec3 finalColor = colorVariation * galaxyBrightness * 1.5;\n"
+      "   FragColor = vec4(finalColor, particleAlpha * 0.85);\n"
+      "}\n\0";
 
   // build and compile shader program from external files
   string vSourceStr = readShaderFile("shaders/vertex.glsl");
   string fSourceStr = readShaderFile("shaders/fragment.glsl");
-  
+
   if (vSourceStr.empty() || fSourceStr.empty()) {
-      cout << "Using fallback shaders..." << endl;
-      shaderProgram = setupShaders(fallbackVS, fallbackFS);
+    cout << "Using fallback shaders..." << endl;
+    shaderProgram = setupShaders(fallbackVS, fallbackFS);
   } else {
-      shaderProgram = setupShaders(vSourceStr.c_str(), fSourceStr.c_str());
+    shaderProgram = setupShaders(vSourceStr.c_str(), fSourceStr.c_str());
   }
 
   // Setup trails
   setupTrailQuad();
-  const char* trailVS = "#version 330 core\nlayout (location = 0) in vec3 aPos; void main() { gl_Position = vec4(aPos, 1.0); }";
-  const char* trailFS = "#version 330 core\nout vec4 FragColor; void main() { FragColor = vec4(0.0, 0.0, 0.0, 0.3); }";
+  const char *trailVS =
+      "#version 330 core\nlayout (location = 0) in vec3 aPos; void main() { gl_Position = vec4(aPos, 1.0); }";
+  const char *trailFS = "#version 330 core\nout vec4 FragColor; void main() { FragColor = vec4(0.0, 0.0, 0.0, 0.3); }";
   trailProgram = setupShaders(trailVS, trailFS);
 
   // Creates a circle, abstracted out to header file
@@ -383,16 +392,16 @@ int main() {
     ImGui::NewFrame();
 
     if (!io.WantCaptureKeyboard && !io.WantCaptureMouse) {
-        processInput(window, deltaTime);
+      processInput(window, deltaTime);
     }
 
     // instead of full clear, draw a semi-transparent black quad to create trails
     if (settings.showTrails) {
-        glUseProgram(trailProgram);
-        glBindVertexArray(trailVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+      glUseProgram(trailProgram);
+      glBindVertexArray(trailVAO);
+      glDrawArrays(GL_TRIANGLES, 0, 6);
     } else {
-        glClear(GL_COLOR_BUFFER_BIT);
+      glClear(GL_COLOR_BUFFER_BIT);
     }
 
     // clear only depth if needed (we aren't using depth here, but good practice)
